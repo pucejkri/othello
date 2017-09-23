@@ -1,201 +1,148 @@
-// checkers.js
+// othello.js
 
 /** The state of the game */
 var state = {
-  action: 'idle',
   over: false,
   turn: 'b',
+  skipped: false,
   board: [
-    [null,'w',null, 'w', null, 'w',  null, 'w',  null, 'w'],
-    ['w',null,'w',null,'w',null,'w',null,'w',null],
-    [null,'w',null,'w',null,'w',null,'w',null,'w'],
-    ['w',null,'w',null,'w',null,'w',null,'w',null],
-    [null, null, null, null, null, null, null, null, null, null],
-    [null, null, null, null, null, null, null, null, null, null],
-    [null,'b',null,'b',null,'b',null,'b',null,'b'],
-    ['b',null,'b',null,'b',null,'b',null,'b',null],
-    [null,'b',null,'b',null,'b',null,'b',null,'b'],
-    ['b',null,'b',null,'b',null,'b',null,'b',null]
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, 'w' , 'b' , null, null, null],
+    [null, null, null, 'b' , 'w' , null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null]
   ],
-  captures: {w: 0, b: 0}
+  pieces: {b: 2, w: 2}
 }
 
 var ctx;
 
-/** @function getLegalMoves
-  * returns a list of legal moves for the specified
-  * piece to make.
-  * @param {String} piece - 'b' or 'w' for black or white pawns,
-  *    'bk' or 'wk' for white or black kings.
-  * @param {integer} x - the x position of the piece on the board
-  * @param {integer} y - the y position of the piece on the board
-  * @returns {Array} the legal moves as an array of objects.
+/** @function checkNeighbors()
+  * Improves efectivity of legal position checking - filters out such squares that
+  * has no neghboring pieces already placed.
   */
-function getLegalMoves(piece, x, y) {
-  var moves = [];
-  switch(piece) {
-    case 'b': // black can only move down the board diagonally
-      checkSlide(moves, x-1, y-1);
-      checkSlide(moves, x+1, y-1);
-      checkJump(moves, {captures:[],landings:[], x:x, y:y}, piece, x, y);
-      break;
-    case 'w':  // white can only move up the board diagonally
-      checkSlide(moves, x-1, y+1);
-      checkSlide(moves, x+1, y+1);
-      checkJump(moves, {captures:[],landings:[], x:x, y:y}, piece, x, y);
-      break;
-    case 'bk': // kings can move diagonally any direction
-    case 'wk': // kings can move diagonally any direction
-      checkSlide(moves, x-1, y+1);
-      checkSlide(moves, x+1, y+1);
-      checkSlide(moves, x-1, y-1);
-      checkSlide(moves, x+1, y-1);
-      checkJump(moves, {captures:[],landings:[], x:x, y:y}, piece, x, y);
-      break;
+function checkNeighbors(x, y){
+  for(var i = -1; i < 2; i++){
+    fx = x+i;
+    if (!(fx<0 || fx>7)) {
+      for(var j = -1; j < 2; j++) {
+        fy = y+j;
+        if (!(fy<0 || fy>7)) {
+          if(state.board[fy][fx]){
+            return true;
+          }
+        }
+      }
+    }
   }
-  return moves;
+  return false;
 }
 
-/** @function checkSlide
-  * A helper function to check if a slide move is legal.
-  * If it is, it is added to the moves array.
-  * @param {Array} moves - the list of legal moves
-  * @param {integer} x - the x position of the movement
-  * @param {integer} y - the y position of the movement
+/** @function isLegalPos()
+  * Check whether current position is legal for piece placement.
   */
-function checkSlide(moves, x, y) {
-  // Check square is on grid
-  if(x < 0 || x > 9 || y < 0 || y > 9) return;
-  // check square is unoccupied
-  if(state.board[y][x]) return;
-  // legal move!  Add it to the move list
-  moves.push({type: 'slide', x: x, y: y});
-}
-
-/** @function copyJumps
-  * A helper function to clone a jumps object
-  * @param {Object} jumps - the jumps to clone
-  * @returns The cloned jump object
-  */
-function copyJumps(jumps) {
-  // Use Array.prototype.slice() to create a copy
-  // of the landings and captures array.
-  var newJumps = {
-    x: jumps.x,
-    y: jumps.y,
-    landings: jumps.landings.slice(),
-    captures: jumps.captures.slice()
+function isLegalPos(x,y) {
+  if(state.board[y][x]){
+    return false;
+  } else if (checkNeighbors(x, y)) {
+    if(checkFlip(x, y)) return true;
   }
-  return newJumps;
+  return false;
 }
 
-/** @function checkJump
-  * A recursive helper function to determine legal jumps
-  * and add them to the moves array
-  * @param {Array} moves - the moves array
-  * @param {Object} jumps - an object describing the
-  *  prior jumps in this jump chain.
-  * @param {String} piece - 'b' or 'w' for black or white pawns,
-  *    'bk' or 'wk' for white or black kings
-  * @param {integer} x - the current x position of the piece
-  * @param {integer} y - the current y position of the peice
+/** @function checkFlip()
+  * Checks whether from current position any flip is available. Uses checkLine()
+  * with last parameter 'false' in order to supper applying flips.
   */
-function checkJump(moves, jumps, piece, x, y) {
-  switch(piece) {
-    case 'b': // black can only move down the board diagonally
-      checkLanding(moves, copyJumps(jumps), piece, x-1, y-1, x-2, y-2);
-      checkLanding(moves, copyJumps(jumps), piece, x+1, y-1, x+2, y-2);
-      break;
-    case 'w':  // white can only move up the board diagonally
-      checkLanding(moves, copyJumps(jumps), piece, x-1, y+1, x-2, y+2);
-      checkLanding(moves, copyJumps(jumps), piece, x+1, y+1, x+2, y+2);
-      break;
-    case 'bk': // kings can move diagonally any direction
-    case 'wk': // kings can move diagonally any direction
-      checkLanding(moves, copyJumps(jumps), piece, x-1, y+1, x-2, y+2);
-      checkLanding(moves, copyJumps(jumps), piece, x+1, y+1, x+2, y+2);
-      checkLanding(moves, copyJumps(jumps), piece, x-1, y-1, x-2, y-2);
-      checkLanding(moves, copyJumps(jumps), piece, x+1, y-1, x+2, y-2);
-      break;
+function checkFlip(x,y) {
+  for(var i = -1; i < 2; i++) {
+    for (var j = -1; j < 2; j ++) {
+      if (checkLine(x, y, i, j, false)) return true;
+    }
   }
 }
 
-/** @function checkLanding
-  * A helper function to determine if a landing is legal,
-  * if so, it adds the jump sequence to the moves list
-  * and recursively seeks additional jump opportunities.
-  * @param {Array} moves - the moves array
-  * @param {Object} jumps - an object describing the
-  *  prior jumps in this jump chain.
-  * @param {String} piece - 'b' or 'w' for black or white pawns,
-  *    'bk' or 'wk' for white or black kings
-  * @param {integer} cx - the 'capture' x position the piece is jumping over
-  * @param {integer} cy - the 'capture' y position of the peice is jumping over
-  * @param {integer} lx - the 'landing' x position the piece is jumping onto
-  * @param {integer} ly - the 'landing' y position of the peice is jumping onto
+/** @function applyMove()
+  * Applies move. Uses the checkLine() function with last parameter 'true' in order
+  * to apply flips.
   */
-function checkLanding(moves, jumps, piece, cx, cy, lx, ly) {
-  // Check that we're not jumping back to our starting position
-  if(lx == jumps.x && ly == jumps.y) return;
-  // Check landing square is on grid
-  if(lx < 0 || lx > 9 || ly < 0 || ly > 9) return;
-  // Check landing square is unoccupied
-  if(state.board[ly][lx]) return;
-  // Check capture square is occupied by opponent
-  if(state.turn === 'b' && !(state.board[cy][cx] === 'w' || state.board[cy][cx] === 'wk')) return;
-  if(state.turn === 'w' && !(state.board[cy][cx] === 'b' || state.board[cy][cx] === 'bk')) return;
-  // Check that we haven't landed on this square previously
-  if(0 < jumps.landings.indexOf(function(landing){return landing.x == lx && landing.y == ly;})) return;
-  // legal jump! add it to the moves list
-  jumps.captures.push({x: cx, y: cy});
-  jumps.landings.push({x: lx, y: ly});
-  moves.push({
-    type: 'jump',
-    captures: jumps.captures.slice(),
-    landings: jumps.landings.slice()
-  });
-  // check for further jump opportunities
-  checkJump(moves, jumps, piece, lx, ly);
+function applyMove(x,y) {
+  for(var i = -1; i < 2; i++) {
+    for (var j = -1; j < 2; j ++) {
+      checkLine(x, y, i, j, true);
+    }
+  }
+  state.pieces.b = countPieces('b');
+  state.pieces.w = countPieces('w');
+
+  console.log("black: " + state.pieces.b.toString());
+  console.log("white: " + state.pieces.w.toString());
 }
 
-/** @function ApplyMove
-  * A function to apply the selected move to the game
-  * @param {object} move - the move to apply.
+
+/** @function countPieces()
+  * Counts pieces for both players and saves into arguments of global state variable.
   */
-function applyMove(x, y, move) {
-  // TODO: Apply the move
-  if(move.type === "slide") {
-    state.board[move.y][move.x] = state.board[y][x];
-    state.board[y][x] = null;
-  } else {
-    move.captures.forEach(function(square){
-      var piece = state.board[square.y][square.x];
-      state.captures[piece.substring(0,1)]++;
-      state.board[square.y][square.x] = null;
+function countPieces(type) {
+  var count = 0;
+  state.board.forEach(function(row, index) {
+    row.forEach(function(piece, index) {
+      if(piece == type) count++;
     });
-    var index = move.landings.length - 1;
-    state.board[move.landings[index].y][move.landings[index].x] = state.board[y][x];
-    state.board[y][x] = null;
-  }
+  });
+  return count
 }
 
-/** @function checkForVictory
-  * Checks to see if a victory has been actived
-  * (All peices of one color have been captured)
-  * @return {String} one of three values:
-  * "White wins", "Black wins", or null, if neither
-  * has yet won.
+
+/** @function checkLine()
+  * Checks in all 8 directions whether the line with new piece yields acceptable
+  * move with at least one flip.
   */
-function checkForVictory() {
-  if(state.captures.w == 20) {
-    state.over = true;
-    return 'black wins';
+function checkLine(x, y, dirX, dirY, apply) {
+  var flip = false;
+  fx = x+dirX;
+  fy = y+dirY;
+  if((!(fx<0 || fx>7) && !(fy<0 || fy>7)) && (!state.board[fy][fx] || state.board[fy][fx] == state.turn)) return flip;
+  for(var i = 1; i < 8; i++) {
+    fx = x+dirX*i;
+    fy = y+dirY*i;
+    if (!(fx<0 || fx>7) && !(fy<0 || fy>7)) {
+      if(state.board[fy][fx] == state.turn) {
+        flip = true;
+        if(apply) {
+          for(var j = 1; j < i; j++) {
+            fx = x+dirX*j;
+            fy = y+dirY*j;
+            state.board[fy][fx] = state.turn;
+          }
+        }
+
+        return flip;
+      }
+    }
   }
-  if(state.captures.b == 20) {
-    state.over = true;
-    return 'white wins';
+  return flip;
+}
+
+
+
+/** @function checkForGameOver()
+  * Checks to see game is over
+  */
+function checkForGameOver() {
+  if(!hasLegalMove()) {
+    if(state.skipped || (state.pieces.b + state.pieces.w == 64)) {
+      console.log('Game Over');
+      state.over = true;
+    } else {
+      console.log(state.turn + ' has no legal moves. Skipping to the next turn.');
+      state.skipped = true;
+      nextTurn();
+    }
   }
-  return null;
 }
 
 /** @function nextTurn()
@@ -207,32 +154,32 @@ function nextTurn() {
   else state.turn = 'b';
 }
 
-/** @function renderChecker
+/** @function renderChecker()
   * Renders a checker at the specified position
   */
-function renderChecker(piece, x, y) {
+function renderPiece(piece, x, y) {
   ctx.beginPath();
-  if(state.board[y][x].charAt(0) === 'w') {
+  if(piece.charAt(0) === 'w') {
     ctx.fillStyle = '#fff';
   } else {
     ctx.fillStyle = '#000';
   }
-  ctx.arc(x*100+50, y*100+50, 40, 0, Math.PI * 2);
+  ctx.arc(x*100+50, y*100+50, 40, 0, Math.PI * 2, false);
   ctx.fill();
-  // TODO: Add a crown for kings
 }
 
-/** @function renderSquare
+
+/** @function renderSquare()
   * Renders a single square on the game board
   * as well as any checkers on it.
   */
 function renderSquare(x,y) {
-  if((x + y) % 2 == 1) {
-    ctx.fillStyle = '#888';
-    ctx.fillRect(x*100, y*100, 100, 100);
-    if(state.board[y][x]) {
-      renderChecker(state.board[y][x], x, y);
-    }
+  ctx.fillStyle = '#33cc33';
+  ctx.fillRect(x*100, y*100, 100, 100);
+  ctx.strokeStyle = 'black';
+  ctx.strokeRect(x*100, y*100, 100, 100);
+  if(state.board[y][x]) {
+    renderPiece(state.board[y][x], x, y);
   }
 }
 
@@ -241,8 +188,8 @@ function renderSquare(x,y) {
   */
 function renderBoard() {
   if(!ctx) return;
-  for(var y = 0; y < 10; y++) {
-    for(var x = 0; x < 10; x++) {
+  for(var y = 0; y < 8; y++) {
+    for(var x = 0; x < 8; x++) {
       renderSquare(x, y);
     }
   }
@@ -254,121 +201,100 @@ function boardPosition(x, y) {
   return {x: boardX, y: boardY}
 }
 
-function handleMouseDown(event) {
+function handleMouseClick(event) {
+  if(state.over) return;
   var position = boardPosition(event.clientX, event.clientY);
   var x = position.x;
   var y = position.y;
-  if(x < 0 || y < 0 || x > 9 || y > 9) return;
+  if(x < 0 || y < 0 || x > 7 || y > 7) return;
   // Make sure we're over the current player
-  if(state.board[y][x] && state.board[y][x].charAt(0) === state.turn) {
+  if(isLegalPos(x, y)) {
     // pick up piece
-    state.movingPiece = {
-      piece: state.board[y][x],
-      startPosition: {x: x, y: y},
-      currentPosition: boardPosition(event.clientX,event.clientY)
+    state.board[y][x] = state.turn;
+    renderBoard();
+    applyMove(x, y);
+    renderBoard();
+    nextTurn();
+  }
+  checkForGameOver();
+  if(state.over) {
+    renderOver();
+    window.addEventListener('keydown', ()=>{
+      location.reload();
+    }, {once: true})
+  }
+}
+
+function checkWinner(){
+  if(state.pieces.b > state.pieces.w) {
+    return 'Black';
+  } else if(state.pieces.b < state.pieces.w) {
+    return 'White';
+  } else {
+    return 'tie';
+  }
+}
+
+function renderOver() {
+  if(!ctx) return;
+  var text = '';
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = 'black';
+  ctx.fillRect(0,0,800,800);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "ivory";
+  ctx.font = '60px sans-serif';
+  if(checkWinner() == 'tie'){
+    text = 'It is a tie!'
+  } else {
+    var text = checkWinner() + ' wins!'
+  }
+  ctx.fillText("Game Over, " + text, 80, 300);
+  ctx.font = '50px sans-serif';
+  ctx.fillText("Points:  Black - " + state.pieces.b.toString()
+    + ",  White - " + state.pieces.w.toString(), 60, 450);
+  ctx.font = '40px sans-serif';
+  ctx.fillText("-Press any key for new game-", 150, 700);
+  return;
+}
+
+function hasLegalMove(){
+  for (var i = 0; i < 8; i++) {
+    for (var j = 0; j < 8; j++) {
+      if(isLegalPos(i, j)) return true;
     }
-    state.action = "dragging";
-    state.board[y][x] = null;
-    renderBoard();
   }
+  return false;
 }
 
-function handleMouseUp(event) {
-  if(state.action !== 'dragging') return;
-  var position = boardPosition(event.clientX, event.clientY);
-  var x = position.x;
-  var y = position.y;
-  if(x < 0 || y < 0 || x > 9 || y > 9) {
-    // Release off board; rubberband back to startPosition
-    var sx = state.movingPiece.startPosition.x;
-    var sy = state.movingPiece.startPosition.y;
-    state.board[sy][sx] = state.movingPiece.piece;
-    state.movingPiece = null;
-    state.action = "idle";
-    renderBoard();
-    return;
-  };
-  // If the drop is part of a legal move...
-  if(true) {
-    var lx = state.movingPiece.currentPosition.x;
-    var ly = state.movingPiece.currentPosition.y;
-    state.board[ly][lx] = state.movingPiece.piece;
-    state.movingPiece = null;
-    state.action = "idle";
-    renderBoard();
-    return;
-  }
-}
 
-function renderDragging() {
-  renderBoard();
-
-  // Render our ghost checker
-  ctx.fillStyle = '#555';
-  ctx.beginPath();
-  ctx.arc(
-    state.movingPiece.startPosition.x*100+50,
-    state.movingPiece.startPosition.y*100+50,
-    40, 0, Math.PI * 2
-  );
-  ctx.fill();
-
-  // Render our moving checker
-  ctx.strokeStyle = 'yellow';
-  ctx.beginPath();
-  ctx.arc(
-    state.movingPiece.currentPosition.x*100+50,
-    state.movingPiece.currentPosition.y*100+50,
-    40, 0, Math.PI * 2
-  );
-  ctx.stroke();
-
-}
 
 function handleMouseMove(event) {
+  if(state.over) return;
   renderBoard();
-  switch(state.action) {
-    case 'idle':
-      hoverOverChecker(event);
-      break;
-    case 'dragging':
-      state.movingPiece.currentPosition =
-        boardPosition(event.clientX, event.clientY);
-      renderDragging();
-      break;
-  }
+  hoverOverSquare(event);
 }
 
-/** @function hoverOverChecker
+/** @function hoverOverSquare
   * Event handler for when a player is deciding
   * where to move.
   */
-function hoverOverChecker(event) {
-  // Make sure we have a canvas context to render to
+function hoverOverSquare(event) {
   if(!ctx) return;
   var x = Math.floor(event.clientX / 50);
   var y = Math.floor(event.clientY / 50);
-  // Adjust for scrolling
-  // Avoid array out-of-bounds issues.
-  if(x < 0 || y < 0 || x > 9 || y > 9) return;
-  // Make sure we're over the current player
-  if(state.board[y][x] && state.board[y][x].charAt(0) === state.turn) {
-    // Highlight the checker to move
-    ctx.strokeWidth = 15;
-    ctx.strokeStyle = "yellow";
-    ctx.beginPath();
-    ctx.arc(x*100+50, y*100+50, 40, 0, Math.PI * 2);
-    ctx.stroke();
-    // TODO: Highlight possible moves
+  if(x < 0 || y < 0 || x > 7 || y > 7) return;
+  renderBoard();
+  if(!state.board[y][x] && isLegalPos(x, y)) {
+    renderPiece(state.turn, x, y);
   }
 }
 
 function setup() {
   var canvas = document.createElement('canvas');
-  canvas.width = 1000;
-  canvas.height = 1000;
-  canvas.onmousedown = handleMouseDown;
-  canvas.onmouseup = handleMouseUp;
+  canvas.width = 800;
+  canvas.height = 800;
+  canvas.onmousedown = handleMouseClick;
   canvas.onmousemove = handleMouseMove;
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
